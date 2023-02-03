@@ -34,6 +34,10 @@ from numba import cuda
 
 DRIVE_PATH = os.getcwd()
 
+import os
+# os.environ['CUDA_VISIBLE_DEVICES']='2, 3'
+# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:516"
+
 BINARIES_PATH = os.path.join(DRIVE_PATH, 'models', 'binaries')  
 CHECKPOINTS_PATH = os.path.join(DRIVE_PATH, 'models', 'checkpoints')
 MODEL_PATH = os.path.join(DRIVE_PATH, 'models', 'binaries', 'NIH_CXR.pth') 
@@ -43,7 +47,7 @@ DEBUG_IMAGERY_PATH = os.path.join(DRIVE_PATH, 'debug_imagery')
 GENERATED_IMAGES_PATH = os.path.join(DRIVE_PATH, 'generated_imagery')
 
 IMG_SIZE = 256
-BATCH_SIZE = 8
+BATCH_SIZE = 32
 
 #free_gpu_cache()  
 
@@ -98,7 +102,7 @@ class GeneratorNet(torch.nn.Module):
     def __init__(self, img_shape=(IMG_SIZE, IMG_SIZE)):
         super().__init__()
         self.generated_img_shape = img_shape
-        num_neurons_per_layer = [LATENT_SPACE_DIM, 512, 1024, 4096, img_shape[0] * img_shape[1]]
+        num_neurons_per_layer = [LATENT_SPACE_DIM, 256, 512, 1024, img_shape[0] * img_shape[1]]
 
         self.net = nn.Sequential(
             *vanilla_block(num_neurons_per_layer[0], num_neurons_per_layer[1]),
@@ -114,14 +118,15 @@ class GeneratorNet(torch.nn.Module):
 class DiscriminatorNet(torch.nn.Module):
     def __init__(self, img_shape=(IMG_SIZE, IMG_SIZE)):
         super().__init__()
-        num_neurons_per_layer = [img_shape[0] * img_shape[1], 512, 256, 1]
+        num_neurons_per_layer = [img_shape[0] * img_shape[1], 1024, 512, 256, 1]
 
         # Last layer is Sigmoid function - basically the goal of the discriminator is to output 1.
         # for real images and 0. for fake images and sigmoid is clamped between 0 and 1 so it's perfect.
         self.net = nn.Sequential(
             *vanilla_block(num_neurons_per_layer[0], num_neurons_per_layer[1], normalize=False),
             *vanilla_block(num_neurons_per_layer[1], num_neurons_per_layer[2], normalize=False),
-	    *vanilla_block(num_neurons_per_layer[2], num_neurons_per_layer[3], normalize=False, activation=nn.Sigmoid())
+	    *vanilla_block(num_neurons_per_layer[2], num_neurons_per_layer[3], normalize=False),            
+	    *vanilla_block(num_neurons_per_layer[3], num_neurons_per_layer[4], normalize=False, activation=nn.Sigmoid())
         )
 
     def forward(self, img_batch):
@@ -129,8 +134,8 @@ class DiscriminatorNet(torch.nn.Module):
         return self.net(img_batch_flattened)
 
 def get_optimizers(d_net, g_net):
-    d_opt = Adam(d_net.parameters(), lr=0.0001, betas=(0.5, 0.999))
-    g_opt = Adam(g_net.parameters(), lr=0.0001, betas=(0.5, 0.999))
+    d_opt = Adam(d_net.parameters(), lr=0.001, betas=(0.5, 0.999))
+    g_opt = Adam(g_net.parameters(), lr=0.001, betas=(0.5, 0.999))
     return d_opt, g_opt
 
 #free_gpu_cache()  
@@ -149,20 +154,13 @@ fake_images_gt = torch.zeros((BATCH_SIZE, 1), device=device)
 checkpoint_freq = 2
 console_log_freq = 50
 
-debug_imagery_log_freq = 50
-
-ref_batch_size = 16
-ref_noise_batch = get_gaussian_latent_batch(ref_batch_size, device)  # Track G's quality during training on fixed noise vectors
-img_cnt = 0
-
-num_epochs = 5
+num_epochs = 10
 
 ts = time.time()
 
 def train_GAN():
   for epoch in range(num_epochs):
     for batch_idx, (real_images, _) in enumerate(img_dataloader):
-        global img_cnt
 
         real_images = real_images.to(device)
         
@@ -185,16 +183,8 @@ def train_GAN():
 
         generator_loss.backward()
         generator_opt.step()
-        
-	# Save intermediate generator images (more convenient like this than through tensorboard)
-        if batch_idx % debug_imagery_log_freq == 0:
-            with torch.no_grad():
-                log_generated_images = generator_net(ref_noise_batch)
-                log_generated_images_resized = nn.Upsample(scale_factor=2.5, mode='nearest')(log_generated_images)
-                out_path = os.path.join(DEBUG_IMAGERY_PATH, f'{str(img_cnt).zfill(6)}.jpg')
-                save_image(log_generated_images_resized, out_path, nrow=int(np.sqrt(ref_batch_size)), normalize=True)
-                img_cnt += 1
-        
+        # free_gpu_cache()
+
         if batch_idx % console_log_freq == 0:
             prefix = 'GAN training: time elapsed'
             print(

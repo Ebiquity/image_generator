@@ -1,3 +1,7 @@
+data_half/
+debug_imagery/
+models/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

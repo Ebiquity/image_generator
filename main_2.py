@@ -25,12 +25,6 @@ from torchvision.utils import make_grid, save_image
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-import gc
-
-import torch
-from GPUtil import showUtilization as gpu_usage
-from numba import cuda
-
 
 DRIVE_PATH = os.getcwd()
 
@@ -42,10 +36,8 @@ DATA_DIR_PATH = "/nfs/ada/joshi/users/anantak1/data/NIH_CXR_data/images"
 DEBUG_IMAGERY_PATH = os.path.join(DRIVE_PATH, 'debug_imagery')
 GENERATED_IMAGES_PATH = os.path.join(DRIVE_PATH, 'generated_imagery')
 
-IMG_SIZE = 256
+IMG_SIZE = 512
 BATCH_SIZE = 8
-
-#free_gpu_cache()  
 
 transform = transforms.Compose([
     # you can add other transformations in this list
@@ -64,7 +56,7 @@ img_dataloader = torch.utils.data.DataLoader(img_dataset, batch_size=BATCH_SIZE,
 
 print(f'Dataset size: {len(img_dataset)} images.')
 
-"""num_imgs_to_visualize = 1  
+num_imgs_to_visualize = 1  
 batch = next(iter(img_dataloader)) 
 img_batch = batch[0]  
 img_batch_subset = img_batch[:num_imgs_to_visualize] 
@@ -75,12 +67,11 @@ grid = np.moveaxis(grid.numpy(), 0, 2)  # from CHW -> HWC format that's what mat
 plt.figure(figsize=(6, 6))
 plt.title("Samples from the NIH_CXR dataset")
 plt.imshow(grid)
-plt.show()"""
+plt.show()
 
 # Size of the generator's input vector.
 LATENT_SPACE_DIM = 100
 
-#free_gpu_cache()  
 
 # This one will produce a batch of those vectors
 def get_gaussian_latent_batch(batch_size, device):
@@ -98,7 +89,7 @@ class GeneratorNet(torch.nn.Module):
     def __init__(self, img_shape=(IMG_SIZE, IMG_SIZE)):
         super().__init__()
         self.generated_img_shape = img_shape
-        num_neurons_per_layer = [LATENT_SPACE_DIM, 512, 1024, 4096, img_shape[0] * img_shape[1]]
+        num_neurons_per_layer = [LATENT_SPACE_DIM, 256, 512, 1024, img_shape[0] * img_shape[1]]
 
         self.net = nn.Sequential(
             *vanilla_block(num_neurons_per_layer[0], num_neurons_per_layer[1]),
@@ -121,7 +112,7 @@ class DiscriminatorNet(torch.nn.Module):
         self.net = nn.Sequential(
             *vanilla_block(num_neurons_per_layer[0], num_neurons_per_layer[1], normalize=False),
             *vanilla_block(num_neurons_per_layer[1], num_neurons_per_layer[2], normalize=False),
-	    *vanilla_block(num_neurons_per_layer[2], num_neurons_per_layer[3], normalize=False, activation=nn.Sigmoid())
+            *vanilla_block(num_neurons_per_layer[2], num_neurons_per_layer[3], normalize=False, activation=nn.Sigmoid())
         )
 
     def forward(self, img_batch):
@@ -129,11 +120,11 @@ class DiscriminatorNet(torch.nn.Module):
         return self.net(img_batch_flattened)
 
 def get_optimizers(d_net, g_net):
-    d_opt = Adam(d_net.parameters(), lr=0.0001, betas=(0.5, 0.999))
-    g_opt = Adam(g_net.parameters(), lr=0.0001, betas=(0.5, 0.999))
+    d_opt = Adam(d_net.parameters(), lr=0.001, betas=(0.5, 0.999))
+    g_opt = Adam(g_net.parameters(), lr=0.001, betas=(0.5, 0.999))
     return d_opt, g_opt
 
-#free_gpu_cache()  
+torch.cuda.empty_cache()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -148,7 +139,6 @@ fake_images_gt = torch.zeros((BATCH_SIZE, 1), device=device)
 
 checkpoint_freq = 2
 console_log_freq = 50
-
 debug_imagery_log_freq = 50
 
 ref_batch_size = 16
@@ -163,7 +153,7 @@ def train_GAN():
   for epoch in range(num_epochs):
     for batch_idx, (real_images, _) in enumerate(img_dataloader):
         global img_cnt
-
+        
         real_images = real_images.to(device)
         
         discriminator_opt.zero_grad()
@@ -185,8 +175,13 @@ def train_GAN():
 
         generator_loss.backward()
         generator_opt.step()
-        
-	# Save intermediate generator images (more convenient like this than through tensorboard)
+
+        if batch_idx % console_log_freq == 0:
+            prefix = 'GAN training: time elapsed'
+            print(
+                f'{prefix} = {(time.time() - ts):.2f} [s] | epoch={epoch + 1} | batch= [{batch_idx + 1}/{len(img_dataloader)}]')
+            
+        # Save intermediate generator images (more convenient like this than through tensorboard)
         if batch_idx % debug_imagery_log_freq == 0:
             with torch.no_grad():
                 log_generated_images = generator_net(ref_noise_batch)
@@ -194,11 +189,6 @@ def train_GAN():
                 out_path = os.path.join(DEBUG_IMAGERY_PATH, f'{str(img_cnt).zfill(6)}.jpg')
                 save_image(log_generated_images_resized, out_path, nrow=int(np.sqrt(ref_batch_size)), normalize=True)
                 img_cnt += 1
-        
-        if batch_idx % console_log_freq == 0:
-            prefix = 'GAN training: time elapsed'
-            print(
-                f'{prefix} = {(time.time() - ts):.2f} [s] | epoch={epoch + 1} | batch= [{batch_idx + 1}/{len(img_dataloader)}]')
             
         # Save generator checkpoint
         if (epoch + 1) % checkpoint_freq == 0 and batch_idx == 0:
