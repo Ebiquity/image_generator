@@ -36,8 +36,8 @@ DATA_DIR_PATH = "/nfs/ada/joshi/users/anantak1/data/NIH_CXR_data/images"
 DEBUG_IMAGERY_PATH = os.path.join(DRIVE_PATH, 'debug_imagery')
 GENERATED_IMAGES_PATH = os.path.join(DRIVE_PATH, 'generated_imagery')
 
-IMG_SIZE = 512
-BATCH_SIZE = 8
+IMG_SIZE = 256
+BATCH_SIZE = 32
 
 transform = transforms.Compose([
     # you can add other transformations in this list
@@ -56,7 +56,7 @@ img_dataloader = torch.utils.data.DataLoader(img_dataset, batch_size=BATCH_SIZE,
 
 print(f'Dataset size: {len(img_dataset)} images.')
 
-num_imgs_to_visualize = 1  
+"""num_imgs_to_visualize = 1  
 batch = next(iter(img_dataloader)) 
 img_batch = batch[0]  
 img_batch_subset = img_batch[:num_imgs_to_visualize] 
@@ -67,7 +67,7 @@ grid = np.moveaxis(grid.numpy(), 0, 2)  # from CHW -> HWC format that's what mat
 plt.figure(figsize=(6, 6))
 plt.title("Samples from the NIH_CXR dataset")
 plt.imshow(grid)
-plt.show()
+plt.show()"""
 
 # Size of the generator's input vector.
 LATENT_SPACE_DIM = 100
@@ -120,8 +120,8 @@ class DiscriminatorNet(torch.nn.Module):
         return self.net(img_batch_flattened)
 
 def get_optimizers(d_net, g_net):
-    d_opt = Adam(d_net.parameters(), lr=0.001, betas=(0.5, 0.999))
-    g_opt = Adam(g_net.parameters(), lr=0.001, betas=(0.5, 0.999))
+    d_opt = Adam(d_net.parameters(), lr=0.0002, betas=(0.5, 0.999))
+    g_opt = Adam(g_net.parameters(), lr=0.0002, betas=(0.5, 0.999))
     return d_opt, g_opt
 
 torch.cuda.empty_cache()
