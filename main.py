@@ -155,7 +155,7 @@ ref_batch_size = 16
 ref_noise_batch = get_gaussian_latent_batch(ref_batch_size, device)  # Track G's quality during training on fixed noise vectors
 img_cnt = 0
 
-num_epochs = 5
+num_epochs = 20
 
 ts = time.time()
 

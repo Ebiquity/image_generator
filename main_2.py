@@ -120,8 +120,8 @@ class DiscriminatorNet(torch.nn.Module):
         return self.net(img_batch_flattened)
 
 def get_optimizers(d_net, g_net):
-    d_opt = Adam(d_net.parameters(), lr=0.0002, betas=(0.5, 0.999))
-    g_opt = Adam(g_net.parameters(), lr=0.0002, betas=(0.5, 0.999))
+    d_opt = Adam(d_net.parameters(), lr=0.0001, betas=(0.5, 0.999))
+    g_opt = Adam(g_net.parameters(), lr=0.0001, betas=(0.5, 0.999))
     return d_opt, g_opt
 
 torch.cuda.empty_cache()
@@ -145,7 +145,7 @@ ref_batch_size = 16
 ref_noise_batch = get_gaussian_latent_batch(ref_batch_size, device)  # Track G's quality during training on fixed noise vectors
 img_cnt = 0
 
-num_epochs = 5
+num_epochs = 20
 
 ts = time.time()
 
